@@ -1,0 +1,219 @@
+\documentclass{article}
+\usepackage{listings}
+\lstset{
+  basicstyle=\ttfamily,
+  columns=fixed,
+  fontadjust=true,
+  basewidth=0.5em
+}
+\usepackage{natbib}
+\usepackage[unicode=true]{hyperref}
+\usepackage{geometry}
+<<setup, include=FALSE>>=
+library(knitr) 
+opts_chunk$set(fig.width = 5, fig.height = 5)
+@
+\begin{document}
+\title{PS03}
+\author{Yingyue Luan}
+\date{September 23 2017}
+\maketitle
+\section*{Problem 1}
+Gentzkow and Shapiro (http://www.brown.edu/Research/Shapiro/pdfs/CodeAndData.pdf)
+\newline Overall the handbook provides suggestion and instructions to social scientists who do not have degrees in programming or software engineering, who are also reluctant to change their work styles. I benefit a lot from chapter two talking about automation. Writing key script in a system shell offers readers a clear understanding of the process from beginning to end and allows replication. We should also automate as much as we could. Instead of moving file from one folder to another, we should write script to do so. I think the author makes a good point in chapter three introducing vision control. It allows us to easily refer back to previous edits and make comparison. This is extremely helpful for collaboration when two people have different ideas and they all want to try out. Also, creating function for similar steps reduces redundancy and creates readability. But it might be slightly difficult to test the function and make sure it works for all scenarios. Moreover, the author gives good recommendations on documentation. Besides only commenting information from other sources, we should name our variables descriptively and easy to read using complete words and underscore. As the author mentions in the appendix, we should fully take advantage of the debugging tools and informative error handling provided by most of the programming languages. If those are not enough, try writing unit tests instead of manually checking such as using different numbers to check a quadratic root formula.
+
+Questions
+1. In chapter three, the author states that vision control helps maintain one single, authoritative vision of the directory and it will help resolve conflicts when two people make changes simultaneously. How can it help?
+2. In chapter three, if one person delete one input file and re-run the whole directory. Will the deleted file be called back if we go back to the previous log and where did the file go?
+3. In chapter five, I am not very clear of what panel data is?
+4. What are some more advanced task management systems? Evernote and OneNote only provide basic options like checkbox.
+
+\section*{Problem 2}
+\subsection*{a}
+<<r-chunk1, tidy=TRUE>>=
+library(stringr)
+text = readLines("http://www.gutenberg.org/cache/epub/100/pg100.txt")
+# remove all the empty lines
+text = text[sapply(text, nchar) > 0]
+# remove all warning after each play
+pat = "(<<THIS ELECTRONIC VERSION OF THE COMPLETE WORKS OF WILLIAM|SHAKESPEARE IS COPYRIGHT 1990-1993 BY WORLD LIBRARY, INC., AND IS|PROVIDED BY PROJECT GUTENBERG ETEXT OF ILLINOIS BENEDICTINE COLLEGE|WITH PERMISSION.  ELECTRONIC AND MACHINE READABLE COPIES MAY BE|DISTRIBUTED SO LONG AS SUCH COPIES|PERSONAL USE ONLY|COMMERCIALLY.  PROHIBITED COMMERCIAL DISTRIBUTION INCLUDES BY ANY|SERVICE THAT CHARGES FOR DOWNLOAD TIME OR FOR MEMBERSHIP.>>)"
+text = text[!(str_detect(text, pattern = pat))]
+# seperate plays by their years and remove information and the first by starting from the second play
+start = grep("^(15|16)[0-9]{2}$", text)
+text = text[start[2]:length(text)]
+year = grep("^(15|16)[0-9]{2}$", text)
+# put all plays except the last one in a list 
+play = list()
+for (i in 1:(length(year)-1)) {
+  start = year[i]
+  end = year[i+1]-1
+  onePlay = list(text[start:end])
+  play[i] <- onePlay
+}
+@
+\begin{lstlisting}[breaklines=true]
+pat = "(<<THIS ELECTRONIC VERSION OF THE COMPLETE WORKS OF WILLIAM|SHAKESPEARE IS COPYRIGHT 1990-1993 BY WORLD LIBRARY, INC., AND IS|PROVIDED BY PROJECT GUTENBERG ETEXT OF ILLINOIS BENEDICTINE COLLEGE|WITH PERMISSION.  ELECTRONIC AND MACHINE READABLE COPIES MAY BE|DISTRIBUTED SO LONG AS SUCH COPIES|PERSONAL USE ONLY|COMMERCIALLY.  PROHIBITED COMMERCIAL DISTRIBUTION INCLUDES BY ANY|SERVICE THAT CHARGES FOR DOWNLOAD TIME OR FOR MEMBERSHIP.>>)"
+\end{lstlisting}
+
+\subsection*{b}
+<<r-chunk2, tidy=TRUE>>=
+# create a function extracting the body of the play, starting from line with "SCENE" and ending with "THE END"
+getBody <- function(x) {
+  bodyStart = grep("(SCENE|Scene)[[:space:]][[:upper:][:digit:]]+", x)[1]
+  bodyEnd = grep("THE END", x)
+  body = x[bodyStart:bodyEnd]
+}
+# apply the function to all the plays and get the body of each play
+body = sapply(play, getBody)
+
+# create a function extracting the year of the play, the title, the number of acts, and the number of scenes
+getList <- function(x) {
+  year = x[1]
+  title = x[2]
+  act = sum(str_count(x, pattern = "(ACT|Act)\\s\\w+\\.\\s((SCENE |Scene )(1|I))"))
+  scene = sum(str_count(x, pattern = "(SCENE|Scene)[[:space:]][[:upper:][:digit:]]+"))
+  cbind(year, title, act, scene)
+}
+# apply the function to all the plays and get meta data of each play
+mD = sapply(play, getList)
+metaData = data.frame(mD)
+@
+\subsection*{c}
+<<r-chunk3, tidy=TRUE>>=
+# we first create two empty lists which will contain the speakers and spoken texts of all the plays
+speakersAll = list()
+chunksAll = list()
+# dealing with one play at a time
+for (j in 1:length(play)) {
+  x = play[[j]]
+  # create a data frame containing the starting and ending position of speaker name. The row number of the data frame is the line number where the speaker name appears
+  findSpeaker = data.frame(str_locate(x, (ifelse(j == 4, "^[[:upper:]]{1}[A-Za-z]+( [[:upper:]]{1}[A-Za-z]+){0,}\\.\\s", "^[[:space:]]{2}[[:upper:]]{1}[A-Za-z]+( [[:upper:]]{1}[A-Za-z]+){0,}\\.\\s"))))
+  findSpeaker = na.omit(findSpeaker)
+  lineSpokenText = as.numeric(rownames(findSpeaker))
+  # create two lists for speakers and spoken texts in this play
+  speakers = list()
+  spokenTexts = list()
+  # for each line number, extracting the text in between and removing the speaker name in the begining, we get the spoken text. We get the speaker name by subsetting the sentence by its starting and ending positions
+  n = length(lineSpokenText)-1
+  for (i in 1:n) {
+    start = lineSpokenText[i]
+    end = lineSpokenText[i+1]-1
+    spokenText = x[start:end]
+    speaker = str_sub(spokenText[1], start = 3, end = findSpeaker[i,2]-2)
+    spokenText = str_replace(spokenText, (ifelse(j == 4, "^[[:upper:]]{1}[A-Za-z]+( [[:upper:]]{1}[A-Za-z]+){0,}\\.\\s", "^[[:space:]]{2}[[:upper:]]{1}[A-Za-z]+( [[:upper:]]{1}[A-Za-z]+){0,}\\.\\s")), "")
+    speakers = c(speakers, speaker)
+    spokenTexts = c(spokenTexts, list(spokenText))
+  }
+  # add back the speaker and spoken chunk information of the last chunk
+  lastStart = lineSpokenText[n]
+  lastEnd = lineSpokenText[length(lineSpokenText)]
+  lastSpokenText = x[lastStart:lastEnd]
+  lastSpeaker = str_sub(lastSpokenText[1], start = 3, end = findSpeaker[n,2]-2)
+  lastSpokenText = str_replace(lastSpokenText, (ifelse(j == 4, "^[[:upper:]]{1}[A-Za-z]+( [[:upper:]]{1}[A-Za-z]+){0,}\\.\\s", "^[[:space:]]{2}[[:upper:]]{1}[A-Za-z]+( [[:upper:]]{1}[A-Za-z]+){0,}\\.\\s")), "")
+  speakers = c(speakers, lastSpeaker)
+  spokenTexts = c(spokenTexts, list(lastSpokenText))
+  # put result of each play into list. Each list will contain 35 elements
+  speakersAll = c(speakersAll, list(speakers))
+  chunksAll = c(chunksAll, list(spokenTexts))
+}
+# combine list of speakers and list of chunks
+combinedAll = cbind(speakersAll, chunksAll)
+@
+\begin{lstlisting}[breaklines=true]
+findSpeaker = data.frame(str_locate(x, (ifelse(j == 4, "^[[:upper:]]{1}[A-Za-z]+( [[:upper:]]{1}[A-Za-z]+){0,}\\.\\s", "^[[:space:]]{2}[[:upper:]]{1}[A-Za-z]+( [[:upper:]]{1}[A-Za-z]+){0,}\\.\\s"))))
+spokenText = str_replace(spokenText, (ifelse(j == 4, "^[[:upper:]]{1}[A-Za-z]+( [[:upper:]]{1}[A-Za-z]+){0,}\\.\\s", "^[[:space:]]{2}[[:upper:]]{1}[A-Za-z]+( [[:upper:]]{1}[A-Za-z]+){0,}\\.\\s")), "")
+lastSpokenText = str_replace(lastSpokenText, (ifelse(j == 4, "^[[:upper:]]{1}[A-Za-z]+( [[:upper:]]{1}[A-Za-z]+){0,}\\.\\s", "^[[:space:]]{2}[[:upper:]]{1}[A-Za-z]+( [[:upper:]]{1}[A-Za-z]+){0,}\\.\\s")), "")
+\end{lstlisting}
+
+\subsection*{d}
+<<r-chunk4, tidy=TRUE>>=
+# The number of unique speakers of each play
+numUniqueSpeaker = lapply(speakersAll, function(x) {length(unique(x))})
+
+# The number of spoken chunks of each play
+numSpokenChunk = lapply(chunksAll, length)
+
+# the number of sentences of every spoken chunk
+numSentence = lapply(chunksAll, function(y) lapply(y, function(x) {length(unlist(gregexpr("[[:alnum:] ][.!?]", x))[unlist(gregexpr("[[:alnum:] ][.!?]", x)) > 0])}))
+# the number of sentences of each play
+numSentence = lapply(numSentence, function(x) Reduce('+', x))
+
+# the number of words of every spoken chunk
+numWord = lapply(chunksAll, function(y) lapply(y, function(x) {sum(str_count(x, pattern = "\\S+"))}))
+# the number of words of each play
+numWord = lapply(numWord, function(x) Reduce('+', x))
+
+# the average number of words per chunk of each play
+avgWord = round(unlist(numWord)/unlist(numSpokenChunk))
+
+# the number of unique words of every spoken chunk
+numUniqueWord = lapply(chunksAll, function(y) lapply(y, function(x) {length(unlist(unique(str_extract(x, pattern = "\\S+"))))}))
+# the number of unique words of each play
+numUniqueWord = lapply(numUniqueWord, function(x) Reduce('+', x))
+
+# create summary statistics
+summaryStats = data.frame(cbind(numUniqueSpeaker, numSpokenChunk, numSentence, numWord, avgWord, numUniqueWord))
+summaryStats
+@
+\subsection*{e}
+<<r-chunk5, tidy=TRUE>>=
+# create dataframe reporting the number of acts and scenes, number of unique speakers, and number of chunks for each play
+time = as.numeric(mD[1,])
+numAct = unlist(mD[3,])
+numScene = unlist(mD[4,])
+numUniqueSpeaker = unlist(numUniqueSpeaker)
+numSpokenChunk = unlist(numSpokenChunk)
+report = cbind(time, numAct, numScene, numUniqueSpeaker, numSpokenChunk)
+report = data.frame(report)
+# group by year and sum by year
+groupByYear = aggregate(.~time, FUN = sum, data = report)
+#plot variable in report against time
+library(ggplot2)
+library(gridExtra)
+plot1 = ggplot(groupByYear, aes(time, numAct, group = 1), color = variable) + geom_line() + stat_smooth(method = lm)
+plot2 = ggplot(groupByYear, aes(time, numScene, group = 1), color = variable) + geom_line() +stat_smooth(method = lm)
+plot3 = ggplot(groupByYear, aes(time, numUniqueSpeaker, group = 1), color = variable) + geom_line() +stat_smooth(method = lm)
+plot4 = ggplot(groupByYear, aes(time, numSpokenChunk, group = 1), color = variable) + geom_line() + stat_smooth(method = lm)
+grid.arrange(plot1, plot2)
+grid.arrange(plot3, plot4)
+@
+\subsection*{f}
+I added a ifelse statement to include play 4 which has the act name starting without indentation like other plays.
+\section*{Problem 3}
+\subsection*{a}
+A object of class "subPlay" 
+\newline Slots:
+\newline\indent Name: body, metaData, speakersAll, chunksAll, summaryStats, report
+\newline\indent Class: list, data.frame, list, list, data.frame, data.frame
+\newline A object of class "body"
+\newline Slots:
+\newline\indent Name: unnamed list variable
+\newline\indent Class: character
+\newline A object of class "metaData"
+\newline Slots:
+\newline\indent Name: unnamed field
+\newline\indent Class: factor
+\newline A object of class "speakersAll"
+\newline Slots:
+\newline\indent Name: unnamed field
+\newline\indent Class: list (containing fields of character)
+\newline A object of class "chunksAll"
+\newline Slots:
+\newline\indent Name: unnamed field
+\newline\indent Class: list (containing fields of character)
+\newline A object of class "summaryStats"
+\newline Slots:
+\newline\indent Name: unnamed field
+\newline\indent Class: list (containing fields of integer)
+\newline A object of class "report"
+\newline Slots:
+\newline\indent Name: unnamed field
+\newline\indent Class: factor
+\subsection*{b}
+<<r-chunk7, tidy=TRUE>>=
+# The methods relating to processing the text of the plays to produce the fields could be the functions like str_detect() and str_locate() from the stringr library as well as grep(). Inputs to these methods are the string text and the methods perform some actions like extract and remove. Fields like speakersAll and chunksAll might be modified and generate list of names and list of spoken chunks.
+
+# Other methods relating to providing information to a user who wants to know something about a play or see the text of the play can be the getList() and getBody() created before or some functions like str_count() embedded in the sapply() or lapply(). These methods count or grasp the information users want. Fields like summartStats might be created to show users the information they want.
+@
+
+\end{document}
