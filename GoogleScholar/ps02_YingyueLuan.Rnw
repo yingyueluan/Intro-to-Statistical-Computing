@@ -1,0 +1,196 @@
+\documentclass{article}
+\usepackage{listings}
+
+
+\usepackage{inconsolata}
+
+<<echo=FALSE>>=
+  options(width=60)
+
+  listing <- function(x, options) {
+    paste("\\begin{lstlisting}[basicstyle=\\ttfamily,breaklines=true]\n",
+      x, "\\end{lstlisting}\n", sep = "")
+  }
+  knit_hooks$set(source=listing, output=listing)
+@
+
+\usepackage{natbib}
+\usepackage[unicode=true]{hyperref}
+\usepackage{geometry}
+<<setup, include=FALSE>>=
+library(knitr) 
+opts_chunk$set(fig.width = 5, fig.height = 5)
+@
+
+\begin{document}
+\title{PS02}
+\author{Yingyue Luan}
+\date{September 10 2017}
+
+\maketitle
+\section*{Problem 1}
+\subsection*{(a)}
+<<r-chunk1>>=
+## save letters in text format
+chars <- sample(letters, 1e6, replace = TRUE) 
+write.table(chars, file = 'tmp1.csv', row.names = FALSE, quote = FALSE, col.names = FALSE)
+system('ls -l tmp1.csv', intern = TRUE)
+## [1] "-rw-r--r-- 1 paciorek scfstaff 2000000 Sep  8  2017 tmp1.csv"
+chars <- paste(chars, collapse = '')
+write.table(chars, file = 'tmp2.csv', row.names = FALSE, quote = FALSE, col.names = FALSE)
+system('ls -l tmp2.csv', intern = TRUE)
+## [1] "-rw-r--r-- 1 paciorek scfstaff 1000001 Sep  8  2017 tmp2.csv"
+@
+\begin{enumerate}
+\item Create a sample of $1e^6$ of the 26 lower case letters with replacement
+\item Output the sample as data frame with name 'tmp1.csv', no row or column name, no quotes
+\item Invoke a system command to list the file in long format and capture the output as r vector
+\item Concatenate all letters without space
+\item Output the result which shrinks from 2mb to 1mb. 
+\end{enumerate}
+In ascii, 7 bits approximately equal to 1 bytes. Adding the spaces between letters, the text file originally have $2e^6$ characters. When we delete the spaces, the file now has $1e^6$ characters.
+
+<<r-chunk2>>=
+## save in binary format
+nums <- rnorm(1e6)
+save(nums, file = 'tmp3.Rda') 
+system('ls -l tmp3.Rda', intern = TRUE)
+## [1] "-rw-r--r-- 1 paciorek scfstaff 7678109 Sep  8  2017 tmp3.Rda"
+@
+\begin{enumerate}
+\item Random generate of a standard normal distribution with $n = 1e^6$
+\item Save the numbers into a Rda file 
+\item Output the result. The file size is 7mb which shows that numbers are stored as 8 bytes per number in binary format
+\end{enumerate}
+<<r-chunk3>>=
+## save in text format
+write.table(nums, file = 'tmp4.csv', row.names = FALSE, quote = FALSE, col.names = FALSE, sep = ',')
+system('ls -l tmp4.csv', intern = TRUE)
+## [1] "-rw-r--r-- 1 paciorek scfstaff 18160350 Sep  8  2017 tmp4.csv"
+write.table(round(nums, 2), file = 'tmp5.csv', row.names = FALSE, quote = FALSE, col.names = FALSE, sep = ',')
+system('ls -l tmp5.csv', intern = TRUE)
+## [1] "-rw-r--r-- 1 paciorek scfstaff 5378678 Sep 8 2017 tmp5.csv"
+@
+\begin{enumerate}
+\item Save numbers into a text file
+\item Output the csv file in long format which is 18mb. The file size of a text file is approximately three times larger than a binary file. Take the number 1 for example, we convert it from ascii to binary 00110001 which is 31 in hex. If we save in text file, we are actually store the ascii code of "3", "1" and possible spaces between number 1 and other numbers. However in binary file, we are only saving one byte per hex pairs. Therefore, the ascii file might contain three times more bytes than binary file.
+\item Save the rounded numbers into a text file
+\item Output the new file which is 5mb
+\end{enumerate}
+
+\vspace{6pt}
+
+\subsection*{(b)}
+<<r-chunk4>>=
+chars <- sample(letters, 1e6, replace = TRUE) 
+chars <- paste(chars, collapse = '') 
+save(chars, file = 'tmp6.Rda')
+save(chars, file = 'tmp8.Rda', ascii = TRUE)
+system('ls -l tmp6.Rda', intern = TRUE)
+system('ls -l tmp8.Rda', intern = TRUE)
+@
+\begin{enumerate}
+\item The codes above generate a smaple of $1e^6$ letteres and save the characters into an Rda binary file. The size of the file is less than 1mb
+\item The defaut option for ascii in save function is FALSE which means a binary file is saved. If we put ascii = TRUE, the file size wil change to 1000070 bytes
+\end{enumerate}
+<<r-chunk5>>=
+chars <- rep('a', 1e6)
+chars <- paste(chars, collapse = '') 
+save(chars, file = 'tmp7.Rda') 
+save(chars, file = 'tmp9.Rda', ascii = TRUE) 
+system('ls -l tmp7.Rda', intern = TRUE)
+system('ls -l tmp9.Rda', intern = TRUE)
+system('cat tmp7.Rda', intern = TRUE)
+@
+\begin{enumerate}
+\item Here, if we do the same of change the value of ascii to TRUE in save function, the file size is also 1000070 bytes, meaning the file is saved as a text file of $1e^6$ characters. 
+\item The binary file of repetitive "a" is significantly smaller than the previous file with the same amount of characters. Instead of returning thousands of binary code for storing all the letters in the previous file, the file of repetitive "a" can be encoded by simply “\textbackslash 037\textbackslash x8b \textbackslash b" "h\textbackslash xc2,\textbackslash x99"
+
+\end{enumerate}
+
+\vspace{6pt}
+\section*{Problem 2}
+\subsection*{a}
+<<r-chunk6>>=
+library(XML)
+returnpage = function(name) {
+  first = strsplit(name, " ")[[1]][1]
+  last = strsplit(name, " ")[[1]][2]
+  
+  if (is.na(first) || is.na(last) || first == '' || last == '') {
+    return("Please enter valid input")
+  } else {
+    url = paste0("https://scholar.google.com/citations?view_op=search_authors&mauthors=", first, "+", last,"&hl=en&oi=ao")
+    html = readLines(url)
+    links = getHTMLLinks(html)
+    targetlinks = links[grep('user=', links)[1]]
+    if (is.na(targetlinks) == TRUE) {
+      return("Your search didn't match any user profiles.")
+    } else {
+      id = gsub("(.*user=)","",targetlinks)
+      id = gsub("(&.*)","",id)
+      pageurl = paste0("https://scholar.google.com/citations?user=",id,"&hl=en&oi=ao")
+      citationpage = readLines(pageurl)
+      return(c(id,citationpage))
+    }
+  }
+}
+@
+\begin{lstlisting}[breaklines=true]
+> returnpage("Geoffrey Hinton")
+[1] "JicYPdAAAAAJ"                                                                                   [2] "<!doctype html><head><meta http-equiv=\"Content-Type\" content=\"text/html;charset=ISO-8859-1\"><meta http-equiv=\"X-UA-Compatible\" content=\"IE=Edge\"><meta name=\"referrer\" content=\"always\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1,minimum-scale=1,maximum-scale=2\"><style>@viewport{width:device-width;min-zoom:1;max-zoom:2;}</style><meta name=\"format-detection\" content=\"telephone=no\"><style>html,body,form,table,div,h1,h2,h3,h4,h5,h6,img,ol,ul,li,button{margin:0;padding:0;border:0;}table{border-collapse:collapse;border-width:0;empty-cells:show;}#gs_top{position:relative;min-width:964px;-webkit-tap-highlight-color:rgba(0,0,0,0);}#gs_top>*:not(#x){-webkit-tap-highlight-color:rgba(204,204,204,.5);}.gs_el_ph #gs_top,.gs_el_ta #gs_top{min-width:300px;}#gs_top.gs_nscl{position:fixed;width:100%;}body,td,input{font-size:13px;font-family:Arial,sans-serif;line-height:1.24}body{background:#fff;color:#222;-webkit-text-size-adjust:100%;-moz-text-size-adjust:n... <truncated>
+\end{lstlisting}
+
+\vspace{6pt}
+\subsection*{b}
+<<r-chunk7>>=
+createdataframe = function(name){
+  
+  citationpage = returnpage(name)[2]
+  page = htmlParse(citationpage)
+  docs = getNodeSet(page, "//a[@class='gsc_a_at']")
+  title = sapply(docs, xmlValue)
+  
+  divs = getNodeSet(page, "//div[@class='gs_gray']")
+  len = length(sapply(divs, xmlValue))
+  author = sapply(divs, xmlValue)[seq(1,len,2)]
+  
+  journal = sapply(divs, xmlValue)[seq(2,len,2)]
+  a = strsplit(journal, ",(?=[^,]+$)", perl=TRUE)
+  for (i in 1:length(a)) {
+     a[[i]] = a[[i]][-length(a[[i]])]
+     i=i+1
+  }
+  a=c(list(a[1:length(a)]), recursive = TRUE)
+  
+  table = getNodeSet(page, "//table")[[2]]
+  x = readHTMLTable(table)
+  
+  citedby = x[2]
+  year = x[3]
+  
+  data.frame("title" = c(title), "author" = c(author), "journal" = c(a), "citedby" = c(citedby), "year" = c(year))
+
+}
+
+createdataframe("Geoffrey Hinton")
+@
+
+\vspace{6pt}
+\subsection*{c}
+<<r-chunk8>>=
+library(testthat)
+context("Finding invalid input")
+test_that("returnpage handles input correctly", {
+  expect_equal(returnpage("aba"), "Please enter valid input")
+  expect_equal(returnpage(""), "Please enter valid input")
+})
+test_that("returnpage did not find a match", {
+  expect_equal(returnpage("Yingyue Luan"), "Your search didn't match any user profiles.")
+})
+@
+I corrected my code directly in part (a).
+
+
+
+\end{document}
