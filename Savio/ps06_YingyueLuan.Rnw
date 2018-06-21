@@ -1,0 +1,242 @@
+\documentclass{article}
+\usepackage{natbib}
+\usepackage{listings}
+\usepackage[unicode=true]{hyperref}
+\usepackage{geometry}
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb}
+\usepackage{longtable}
+<<setup, include=FALSE>>=
+library(knitr) 
+opts_chunk$set(fig.width = 5, fig.height = 5)
+@
+\begin{document}
+\title{PS06}
+\author{Yingyue Luan}
+\date{October 24 2017}
+
+\maketitle
+\section*{Problem 1}
+\begin{enumerate}
+\item What are the goals of their simulation study and what are the metrics that they consider in assessing their method?
+  \begin{itemize}
+  \item Their simulation study is trying to answer two questions: how fast does test statistics converge in distribution to asymptotic distribution and what is the power
+  \item They run simulation under two cases to show the likelihood ratio statistic of the null hypothesis against the alternative hypothesis of two different component normal mixture distribution is asymptotically distributed as a weighted sum of independent chi-squared random variables with one degree of freedom. In the first case, the random samples are drawn from a single normal distribution for null hypothesis and from a mixture of two normal distribution for alternative hypothesis. In the second case, the random samples are from mixtures of two and three normal distributions.
+  \item The metrics are the separation between two component D, sample size, mixing proportion (the height of different Gaussian distribution), and the number of components.
+  \end{itemize}
+\item What choices did the authors have to make in designing their simulation study? What are the key aspects of the data generating mechanism that likely affect the statistical power of the test? Are there data-generating scenarios that the authors did not consider that would be useful to consider? 
+  \begin{itemize}
+  \item The authors have to choose whether to use equal variance, the number of replication, and significant levels. 
+  \item Key aspects affecting the statistical power of the test include the spacing between two component D, sample size and mixing proportion.
+  \item The authors could have explained why they used 1000 replications or conducted other number of simulations.
+  \end{itemize}
+\item Do their tables do a good job of presenting the simulation results and do you have any alternative suggestions for how to do this?
+  \begin{itemize}
+  \item The simulation results are well presented. A minor suggestion is that they can present the simulated significance levels in the same way as simulated power using LR and LR* and listing different sample sizes in column.
+  \end{itemize}
+\item Interpret their tables on power (Tables 2 and 4) - do the results make sense in terms of how the power varies as a function of the data generating mechanism? 
+  \begin{itemize}
+  \item Table 2 and table 4 measures the probability of rejection given the alternative hypothesis is true, while table 1 and table 3 presents the probability of rejection under null hypothesis. For example in table 2, when mixing proportion is 0.5, sample size is 50, nominal level is 0.01, and D = 1, the power for unadjusted test is 1.8, meaning 18/1000 reject null hypothesis give the alternative is true.
+  \item In table 2, for sample size less than 200, the power for D = 1 or 2 is low and for sample size larger than 100, the power of D = 3 becomes large.
+  \item In table 4, for sample size less than 200, low power when one of the D is less than 4 and the other D is less than 2. When both D large than 3, power is reasonable for sample size larger than 100.
+  \end{itemize}
+\item How do you think the authors decided to use 1000 simulations. Would 10 simulations be enough? How might we decide if 1000 simulations is enough? 
+  \begin{itemize}
+  \item The authors decided to use 1000 simulations because the largest sample size is 1000. 10 simulations are not enough and we check if 1000 simulation is enough by looking at the number of rejection and precision.
+  \item Benefits of simulation include no asymptopia and quick to generate data compared to deriving analytical result. Disadvantages can be infeasible to understand full parameter space and the influence on computational power.
+  \end{itemize}
+\end{enumerate}
+
+\newpage
+\section*{Problem 2}
+<<r-chunk2>>=
+library(RSQLite)
+drv <- dbDriver("SQLite")
+dir <- '/Users/lunaluan/Documents/Academic/Berkeley/Fall 2017/243/HW/ps06'
+dbFilename <- 'stackoverflow-2016.db'
+db <- dbConnect(drv, dbname = file.path(dir, dbFilename))
+dbListFields(db, "questions_tags")
+dbListFields(db, "questions")
+dbListFields(db, "users")
+dbGetQuery(db, "select * from questions_tags limit 5") 
+result <- dbGetQuery(db, 
+  "select distinct U.userid from users U 
+  join questions Q on U.userid = Q.ownerid
+  join questions_tags T on Q.questionid = T.questionid
+  where T.tag = 'r' and 
+  userid not in (select userid from users U2 
+  join questions Q2 on U2.userid = Q2.ownerid
+  join questions_tags T2 on Q2.questionid = T2.questionid 
+  where T2.tag = 'python')")
+length(result$userid) #18611
+dbDisconnect(db)
+@
+
+\section*{Problem 3}
+<<python-chunk3, engine='python', echo=TRUE, eval=FALSE>>=
+dir = '/global/scratch/paciorek/wikistats_full'
+lines = sc.textFile(dir + '/' + 'dated')
+lines.getNumPartitions() # 16800
+lines.count() # 9467817626
+
+import re
+from operator import add
+
+# find all webpage related to thanksgiving
+def find(line, regex = "Thanksgiving", language = None): 
+  vals = line.split(' ')
+  if len(vals) < 6:
+    return(False)
+  tmp = re.search(regex, vals[3])
+  if tmp is None or (language != None and vals[2] != language):
+    return(False) 
+  else:
+    return(True)
+ts = lines.filter(find).repartition(480)
+
+def computeKeyValue(line):
+  # create key-value pairs where:
+  # key = date and language
+  # value = number of website hits
+  vals = line.split(' ')
+  return(vals[0] + '-' + vals[2], int(vals[4]))
+
+counts = ts.map(computeKeyValue).reduceByKey(add)
+
+def transform(vals):
+  # split key info back into separate fields
+  key = vals[0].split('-')
+  return(",".join((key[0], key[1], str(vals[1]))))
+  ### output to file ###
+
+dir2 = '/global/home/users/yingyueluan'
+outputDir = dir2 + '/' + 'output'
+output = counts.map(transform).repartition(1).saveAsTextFile(outputDir)
+@
+
+<<r-chunk3, tidy=TRUE>>=
+suppressWarnings(library(readr))
+suppressWarnings(library(sqldf))
+library(ggplot2)
+a = read_delim("/Users/lunaluan/Desktop/part-00000", delim = ",", col_names =c("date", "lang", "hits"))
+
+# formatting date as yyyy-mm-dd
+a$date = as.Date(as.character(a$date), "%Y%m%d")
+# getting the number of hits everyday from Oct 1 to Dec 31
+b = sqldf("select date, hits from a group by date") 
+ggplot(b, aes(x=date, y=hits)) + 
+  geom_area( fill="blue", alpha=.2)+ 
+  geom_line()
+# find the five languages having the most hits
+c = sqldf("select lang, hits from a group by lang order by hits desc limit 5") 
+ggplot(c, aes(x = lang, y = hits)) + geom_bar(stat="identity")
+@
+From the plots, we can see that hits peak at the end of October and at early December. Also, People search "Thanksgiving" the most in English and then in German.
+\section*{Problem 4}
+\subsection*{a}
+<<r-chunk4, tidy=TRUE, eval=FALSE>>=
+if (!require(readr)) {
+  install.packages("readr") 
+  spark_install(version = "2.2.0")
+}
+if (!require(sqldf)) {
+  install.packages("sqldf") 
+  spark_install(version = "2.2.0")
+}
+library(doParallel)
+library(foreach)
+library(readr) 
+library(sqldf)
+nCores <- as.numeric(Sys.getenv('SLURM_CPUS_ON_NODE'))
+registerDoParallel(nCores)
+
+index = sprintf('%0.3d', 0:199)
+dir = '/global/scratch/paciorek/wikistats_full/dated_for_R/part-00'
+
+# create a function getting the data frame for each file and filter out webpages unrelated to Barack_Obama
+getInfo <- function(part) {
+    data <- read_delim(part, 
+                     delim = " " , 
+                     col_names =c("date", "time", "lang", "webpage", "hits", "size"))
+    dataBO <- sqldf("select * from data where webpage LIKE '%Barack_Obama%'") 
+}
+
+# for each file, combine the information into a single data frame
+results <- foreach(i = index,
+                   .combine = rbind,  
+                   .verbose = TRUE) %dopar% {
+  
+  cat('Starting ', i, 'th job.\n', sep = '')
+  part = paste(dir, i, sep = "")
+  tmp = getInfo(part)
+  cat('Finishing ', i, 'th job.\n', sep = '')
+  tmp
+}
+save(results, file = "/global/home/users/yingyueluan/results.Rda")
+@
+\begin{lstlisting}
+> proc.time()
+    user   system  elapsed 
+7601.575 1389.044  521.975
+\end{lstlisting}
+<<r-chunk4.2, tidy=TRUE>>=
+load("/Users/lunaluan/Desktop/results2.Rda")
+x = head(results)
+print(x, right = FALSE)
+@
+\subsection*{b}
+I used parallelized R to create the filtered dataset that just has the Obama-related webpage traffic for the first 200 files. The time elapsed is about 522 seconds. For 960 files, \(522\div\frac{200}{960}\approx 2506\) seconds. Consider I used only one core, it would be \(\frac{2506}{96}\approx 26\) seconds.
+\subsection*{c}
+<<r-chunk4.3, tidy=TRUE, eval=FALSE>>=
+if (!require(readr)) {
+  install.packages("readr") 
+  spark_install(version = "2.2.0")
+}
+if (!require(sqldf)) {
+  install.packages("sqldf") 
+  spark_install(version = "2.2.0")
+}
+library(doParallel)
+library(foreach)
+library(readr) 
+library(sqldf)
+nCores <- as.numeric(Sys.getenv('SLURM_CPUS_ON_NODE'))
+registerDoParallel(nCores)
+
+index = sprintf('%0.3d', 0:199)
+dir = '/global/scratch/paciorek/wikistats_full/dated_for_R/part-00'
+
+getInfo <- function(part) {
+  data <- read_delim(part, 
+                     delim = " " , 
+                     col_names =c("date", "time", "lang", "webpage", "hits", "size"))
+  dataBO <- sqldf("select * from data where webpage LIKE '%Barack_Obama%'") 
+}
+
+results <- foreach(i = index,
+                   .combine = rbind,  
+                   .verbose = TRUE,
+                   .options.multicore=list(preschedule=TRUE)) %dopar% {
+                     
+                     cat('Starting ', i, 'th job.\n', sep = '')
+                     part = paste(dir, i, sep = "")
+                     tmp = getInfo(part)
+                     cat('Finishing ', i, 'th job.\n', sep = '')
+                     tmp
+                   }
+save(results, file = "/global/home/users/yingyueluan/results.Rda")
+@
+\begin{lstlisting}
+.options.multicore=list(preschedule=TRUE)
+> proc.time()
+    user   system  elapsed 
+7715.725 6115.122  783.845
+\end{lstlisting}
+Tasks assigned dynamically is faster than prescheduling.
+<<r-chunk4.4>>=
+tmp = load("/Users/lunaluan/Desktop/results3.Rda")
+y = get(tmp)
+rm(tmp)
+print(head(y), right = FALSE)
+@
+\end{document}
